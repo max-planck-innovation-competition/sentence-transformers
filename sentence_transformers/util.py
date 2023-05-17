@@ -487,8 +487,7 @@ def snapshot_download(
     library_version: Optional[str] = None,
     user_agent: Union[Dict, str, None] = None,
     ignore_files: Optional[List[str]] = None,
-    use_auth_token: Union[bool, str, None] = None
-) -> str:
+    use_auth_token: Union[bool, str, None] = None) -> str:
     """
     Method derived from huggingface_hub.
     Adds a new parameters 'ignore_files', which allows to ignore certain files / file-patterns
