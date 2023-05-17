@@ -497,12 +497,13 @@ def community_detection(embeddings, threshold=0.75, min_community_size=10, batch
 def snapshot_download(
     repo_id: str,
     revision: Optional[str] = None,
-    cache_dir: Union[str, Path, None] = None,
+    cache_dir = None,
     library_name: Optional[str] = None,
     library_version: Optional[str] = None,
-    user_agent: Union[Dict, str, None] = None,
+    user_agent = None,
     ignore_files: Optional[List[str]] = None,
-    use_auth_token: Union[bool, str, None] = None) -> str:
+    use_auth_token = None
+) -> str:
     """
     Method derived from huggingface_hub.
     Adds a new parameters 'ignore_files', which allows to ignore certain files / file-patterns
