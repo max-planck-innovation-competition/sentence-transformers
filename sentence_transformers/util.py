@@ -400,6 +400,21 @@ def import_from_string(dotted_path):
     except AttributeError:
         msg = 'Module "%s" does not define a "%s" attribute/class' % (module_path, class_name)
         raise ImportError(msg)
+    
+
+def print_gpu_utilization():
+    nvmlInit()
+    deviceCount = nvmlDeviceGetCount()
+    for i in range(deviceCount):
+        handle = nvmlDeviceGetHandleByIndex(i)
+        info = nvmlDeviceGetMemoryInfo(handle)
+        print("Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(i, nvmlDeviceGetName(handle), 100*info.free/info.total, info.total, info.free, info.used))
+
+
+def print_summary(result):
+    print(f"Time: {result.metrics['train_runtime']:.2f}")
+    print(f"Samples/second: {result.metrics['train_samples_per_second']:.2f}")
+    print_gpu_utilization()
 
 
 def community_detection(embeddings, threshold=0.75, min_community_size=10, batch_size=1024):
@@ -560,18 +575,3 @@ def snapshot_download(
             os.remove(path + ".lock")
 
     return storage_folder
-
-
-def print_gpu_utilization():
-    nvmlInit()
-    deviceCount = nvmlDeviceGetCount()
-    for i in range(deviceCount):
-        handle = nvmlDeviceGetHandleByIndex(i)
-        info = nvmlDeviceGetMemoryInfo(handle)
-        print("Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(i, nvmlDeviceGetName(handle), 100*info.free/info.total, info.total, info.free, info.used))
-
-
-def print_summary(result):
-    print(f"Time: {result.metrics['train_runtime']:.2f}")
-    print(f"Samples/second: {result.metrics['train_samples_per_second']:.2f}")
-    print_gpu_utilization()
