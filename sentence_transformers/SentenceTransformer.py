@@ -683,6 +683,7 @@ class SentenceTransformer(nn.Sequential):
 
         # accelerate setup
         if accelerator is None:
+            print("creating Acceletor")
             accelerator = Accelerator()
 
         if use_amp:
