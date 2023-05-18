@@ -19,7 +19,7 @@ import fnmatch
 from packaging import version
 import heapq
 
-from pynvml import *
+import pynvml
 
 
 logger = logging.getLogger(__name__)
@@ -403,18 +403,16 @@ def import_from_string(dotted_path):
     
 
 def print_gpu_utilization():
-    nvmlInit()
-    deviceCount = nvmlDeviceGetCount()
-    for i in range(deviceCount):
-        handle = nvmlDeviceGetHandleByIndex(i)
-        info = nvmlDeviceGetMemoryInfo(handle)
-        print("Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(i, nvmlDeviceGetName(handle), 100*info.free/info.total, info.total, info.free, info.used))
-
-
-def print_summary(result):
-    print(f"Time: {result.metrics['train_runtime']:.2f}")
-    print(f"Samples/second: {result.metrics['train_samples_per_second']:.2f}")
-    print_gpu_utilization()
+    pynvml.nvmlInit()
+    for id in pynvml.nvmlDeviceGetCount():
+        handle = pynvml.nvmlDeviceGetHandleByIndex(id)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        print("Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(current_device_index, 
+                                                                                            pynvml.nvmlDeviceGetName(handle), 
+                                                                                            100*info.free/info.total, 
+                                                                                            info.total, 
+                                                                                            info.free, 
+                                                                                            info.used))
 
 
 def community_detection(embeddings, threshold=0.75, min_community_size=10, batch_size=1024):
