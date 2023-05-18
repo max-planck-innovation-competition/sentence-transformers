@@ -801,7 +801,7 @@ class SentenceTransformer(nn.Sequential):
             self._eval_during_training(evaluator, output_path, save_best_model, epoch, -1, callback,
                                         main_process=accelerator.is_main_process)
             
-            logging("GPU utilization after epoch={}".format(epoch))
+            logging("GPU utilization after epoch")
             print_gpu_utilization()
 
 
