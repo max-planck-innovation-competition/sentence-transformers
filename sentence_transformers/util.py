@@ -404,7 +404,7 @@ def import_from_string(dotted_path):
 
 def print_gpu_utilization():
     pynvml.nvmlInit()
-    for id in pynvml.nvmlDeviceGetCount():
+    for id in range(pynvml.nvmlDeviceGetCount()):
         handle = pynvml.nvmlDeviceGetHandleByIndex(id)
         info = pynvml.nvmlDeviceGetMemoryInfo(handle)
         print("Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(current_device_index, 
