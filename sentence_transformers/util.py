@@ -8,7 +8,7 @@ import os
 import torch
 import numpy as np
 import queue
-import logging
+from accelerate.logging import get_logger
 from typing import Dict, Optional, Union
 from pathlib import Path
 
@@ -22,7 +22,7 @@ import heapq
 import pynvml
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 def pytorch_cos_sim(a: Tensor, b: Tensor):
     """
