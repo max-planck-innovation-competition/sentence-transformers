@@ -407,7 +407,7 @@ def print_gpu_utilization():
     for id in range(pynvml.nvmlDeviceGetCount()):
         handle = pynvml.nvmlDeviceGetHandleByIndex(id)
         info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        print("Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(id, 
+        logger.info("Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(id, 
                                                                                             pynvml.nvmlDeviceGetName(handle), 
                                                                                             100*info.free/info.total, 
                                                                                             info.total, 

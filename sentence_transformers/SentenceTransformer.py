@@ -23,6 +23,7 @@ import queue
 import tempfile
 from distutils.dir_util import copy_tree
 from accelerate import Accelerator
+from accelerate.logging import get_logger
 
 from . import __MODEL_HUB_ORGANIZATION__
 from .evaluation import SentenceEvaluator
@@ -31,7 +32,7 @@ from .models import Transformer, Pooling, Dense
 from .model_card_templates import ModelCardTemplate
 from . import __version__
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class SentenceTransformer(nn.Sequential):
     """
@@ -801,7 +802,7 @@ class SentenceTransformer(nn.Sequential):
             self._eval_during_training(evaluator, output_path, save_best_model, epoch, -1, callback,
                                         main_process=accelerator.is_main_process)
             
-            logging.info("GPU utilization after epoch={}".format(epoch))
+            logger.info("GPU utilization after epoch={}".format(epoch))
             print_gpu_utilization()
 
 
