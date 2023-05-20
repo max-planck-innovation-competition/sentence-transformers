@@ -633,6 +633,8 @@ class SentenceTransformer(nn.Sequential):
             save_best_model: bool = True,
             max_grad_norm: float = 1,
             use_amp: bool = False,
+            logging_steps: int = 500,
+            train_callback: Callable[[float, int, int], None] = None,
             callback: Callable[[float, int, int], None] = None,
             show_progress_bar: bool = True,
             checkpoint_path: str = None,
@@ -661,6 +663,10 @@ class SentenceTransformer(nn.Sequential):
         :param save_best_model: If true, the best model (according to evaluator) is stored at output_path
         :param max_grad_norm: Used for gradient normalization.
         :param use_amp: Use Automatic Mixed Precision (AMP). Only for Pytorch >= 1.6.0
+        :param logging_steps: How often to run the train callback
+        :param train_callback: Callback function that is invoked after `logging_steps` train steps.
+                It must accept the following three parameters in this order:
+                `score`, `epoch`, `steps`
         :param callback: Callback function that is invoked after each evaluation.
                 It must accept the following three parameters in this order:
                 `score`, `epoch`, `steps`
@@ -744,6 +750,8 @@ class SentenceTransformer(nn.Sequential):
                 loss_model.zero_grad()
                 loss_model.train()
 
+            loss_values = []
+
             for _ in trange(steps_per_epoch * gradient_accumulation, desc="Iteration", smoothing=0.05, disable=not show_progress_bar):
                 for train_idx in range(num_train_objectives):
                     loss_model = loss_models[train_idx]
@@ -789,6 +797,16 @@ class SentenceTransformer(nn.Sequential):
                                 scheduler.step()
                             global_step += 1
                         training_steps += 1
+
+                    loss_values.append(loss_value.detach())
+
+                    accelerator.wait_for_everyone()
+                    if logging_steps is not None and train_callback is not None:
+                        if global_step % logging_steps == 0:
+                            avg_loss = torch.mean(torch.stack(loss_values)).cpu().numpy()
+                            if accelerator.is_main_process:
+                                train_callback(avg_loss, epoch, global_step)
+                            loss_values = []
 
                 if evaluation_steps > 0 and global_step % evaluation_steps == 0:
                     self._eval_during_training(evaluator, output_path, save_best_model, epoch, global_step, callback,
