@@ -23,6 +23,7 @@ import queue
 import tempfile
 from distutils.dir_util import copy_tree
 from accelerate import Accelerator
+from accelerate.utils import set_seed
 from accelerate.logging import get_logger
 
 from . import __MODEL_HUB_ORGANIZATION__
@@ -33,6 +34,8 @@ from .model_card_templates import ModelCardTemplate
 from . import __version__
 
 logger = get_logger(__name__)
+SEED = 42
+set_seed(SEED)
 
 class SentenceTransformer(nn.Sequential):
     """
