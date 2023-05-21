@@ -743,14 +743,13 @@ class SentenceTransformer(nn.Sequential):
         num_train_objectives = len(train_objectives)
 
         skip_scheduler = False
+        epoch_train_loss = []
         for epoch in trange(epochs, desc="Epoch", disable=not show_progress_bar):
             training_steps = 0
 
             for loss_model in loss_models:
                 loss_model.zero_grad()
                 loss_model.train()
-
-            loss_values = []
 
             for _ in trange(steps_per_epoch * gradient_accumulation, desc="Iteration", smoothing=0.05, disable=not show_progress_bar):
                 for train_idx in range(num_train_objectives):
@@ -797,16 +796,15 @@ class SentenceTransformer(nn.Sequential):
                                 scheduler.step()
                             global_step += 1
                         training_steps += 1
-
-                    loss_values.append(loss_value.detach())
-
-                    accelerator.wait_for_everyone()
+                    
                     if logging_steps is not None and train_callback is not None:
-                        if global_step % logging_steps == 0:
-                            avg_loss = torch.mean(torch.stack(loss_values)).cpu().numpy()
-                            if accelerator.is_main_process:
-                                train_callback(avg_loss, epoch, global_step)
-                            loss_values = []
+                        accelerator.wait_for_everyone()
+                        loss_values = accelerator.gather(loss_value).detach()
+                        logger.info("loss: {}".format(loss_values))
+                        avg_loss = torch.mean(loss_values).cpu().numpy()
+                        if accelerator.is_main_process:
+                            train_callback(avg_loss, epoch, global_step)
+                            
 
                 if evaluation_steps > 0 and global_step % evaluation_steps == 0:
                     self._eval_during_training(evaluator, output_path, save_best_model, epoch, global_step, callback,
