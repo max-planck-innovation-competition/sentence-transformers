@@ -698,7 +698,6 @@ class SentenceTransformer(nn.Sequential):
         # scaling learning rate as we use multiple GPUs
         if torch.distributed.is_initialized():
             optimizer_params["lr"] = optimizer_params["lr"] * torch.distributed.get_world_size()
-        logger.info("learning rate: {}".format(optimizer_params["lr"]))
 
         if use_amp:
             from torch.cuda.amp import autocast
@@ -805,7 +804,6 @@ class SentenceTransformer(nn.Sequential):
                     if logging_steps is not None and train_callback is not None:
                         accelerator.wait_for_everyone()
                         loss_values = accelerator.gather(loss_value).detach()
-                        logger.info("loss: {}".format(loss_values))
                         avg_loss = torch.mean(loss_values).cpu().numpy()
                         if accelerator.is_main_process:
                             train_callback(avg_loss, epoch, global_step)
