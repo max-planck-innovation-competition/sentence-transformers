@@ -695,6 +695,11 @@ class SentenceTransformer(nn.Sequential):
         if accelerator is None:
             accelerator = Accelerator()
 
+        # scaling learning rate as we use multiple GPUs
+        if torch.distributed.is_initialized():
+            optimizer_params["lr"] = optimizer_params["lr"] * torch.distributed.get_world_size()
+        logger.info("learning rate: {}".format(optimizer_params["lr"]))
+
         if use_amp:
             from torch.cuda.amp import autocast
             scaler = torch.cuda.amp.GradScaler()
