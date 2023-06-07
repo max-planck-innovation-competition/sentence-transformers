@@ -619,6 +619,7 @@ class SentenceTransformer(nn.Sequential):
 
     def fit(self,
             train_objectives: Iterable[Tuple[DataLoader, nn.Module]],
+            eval_dataloaders: Iterable[DataLoader] = None,
             evaluator: SentenceEvaluator = None,
             epochs: int = 1,
             steps_per_epoch: int = None,
@@ -635,6 +636,7 @@ class SentenceTransformer(nn.Sequential):
             use_amp: bool = False,
             logging_steps: int = 500,
             train_callback: Callable[[float, int, int], None] = None,
+            eval_loss_callback: Callable[[nn.Module, str, DataLoader, int, int], None] = None,
             callback: Callable[[float, int, int], None] = None,
             show_progress_bar: bool = True,
             checkpoint_path: str = None,
@@ -649,6 +651,7 @@ class SentenceTransformer(nn.Sequential):
         to make sure of equal training with each dataset.
 
         :param train_objectives: Tuples of (DataLoader, LossFunction). Pass more than one for multi-task learning
+        :param eval_dataloaders: DataLoader for evaluation dataset. Pass more than one for multi-task learning
         :param evaluator: An evaluator (sentence_transformers.evaluation) evaluates the model performance during training on held-out dev data. It is used to determine the best model that is saved to disc.
         :param epochs: Number of epochs for training
         :param steps_per_epoch: Number of training steps per epoch. If set to None (default), one epoch is equal the DataLoader size from train_objectives.
@@ -664,9 +667,13 @@ class SentenceTransformer(nn.Sequential):
         :param max_grad_norm: Used for gradient normalization.
         :param use_amp: Use Automatic Mixed Precision (AMP). Only for Pytorch >= 1.6.0
         :param logging_steps: How often to run the train callback
-        :param train_callback: Callback function that is invoked after `logging_steps` train steps.
+        :param train_callback: Callback function that is invoked after each iteration of training.
                 It must accept the following three parameters in this order:
                 `score`, `epoch`, `steps`
+        :param eval_loss_callback: eval_loss_callback function that is invoked after each evaluation.
+                It prints loss during evaluation
+                It must accept the following three parameters in this order:
+                `loss_module`, `device`, `eval_dataloader`, `epoch`, `global_step`
         :param callback: Callback function that is invoked after each evaluation.
                 It must accept the following three parameters in this order:
                 `score`, `epoch`, `steps`
@@ -747,7 +754,6 @@ class SentenceTransformer(nn.Sequential):
         num_train_objectives = len(train_objectives)
 
         skip_scheduler = False
-        epoch_train_loss = []
         for epoch in trange(epochs, desc="Epoch", disable=not show_progress_bar):
             training_steps = 0
 
@@ -801,12 +807,17 @@ class SentenceTransformer(nn.Sequential):
                             global_step += 1
                         training_steps += 1
                     
-                    if logging_steps is not None and train_callback is not None:
+                    if logging_steps > 0 and global_step % logging_steps and train_callback is not None:
                         accelerator.wait_for_everyone()
                         loss_values = accelerator.gather(loss_value).detach()
                         avg_loss = torch.mean(loss_values).cpu().numpy()
                         if accelerator.is_main_process:
                             train_callback(avg_loss, epoch, global_step)
+
+                    if evaluation_steps > 0 and global_step % evaluation_steps == 0 and eval_dataloaders is not None and eval_loss_callback is not None and accelerator.is_main_process:
+                        eval_loss_callback(loss_model, accelerator.device, eval_dataloaders[train_idx], epoch, global_step)
+                        loss_model.zero_grad()
+                        loss_model.train()
                             
 
                 if evaluation_steps > 0 and global_step % evaluation_steps == 0:
