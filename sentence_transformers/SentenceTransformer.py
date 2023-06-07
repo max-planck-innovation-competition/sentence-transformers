@@ -714,6 +714,9 @@ class SentenceTransformer(nn.Sequential):
         # Use smart batching
         for dataloader in dataloaders:
             dataloader.collate_fn = self.smart_batching_collate
+        # Use smart batching for eval data loader   
+        for dataloader in eval_dataloaders:
+            dataloader.collate_fn = self.smart_batching_collate
         # Calculate number of steps
         if steps_per_epoch is None or steps_per_epoch == 0:
             steps_per_epoch = min([len(dataloader) for dataloader in dataloaders]) / gradient_accumulation
