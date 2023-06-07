@@ -745,7 +745,7 @@ class SentenceTransformer(nn.Sequential):
             schedulers.append(scheduler_obj)
 
         n_dataloaders, n_loss_models, n_optimizers, n_eval_dataloaders = len(dataloaders), len(loss_models), len(optimizers), len(eval_dataloaders)
-        prepared = accelerator.prepare(*dataloaders, *loss_models, *optimizers, **eval_dataloaders)
+        prepared = accelerator.prepare(*dataloaders, *loss_models, *optimizers, *eval_dataloaders)
         dataloaders = prepared[0:n_dataloaders]
         loss_models = prepared[n_dataloaders:n_dataloaders + n_loss_models]
         optimizers = prepared[n_dataloaders + n_loss_models:n_dataloaders + n_loss_models + n_optimizers]
