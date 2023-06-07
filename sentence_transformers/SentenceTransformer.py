@@ -619,7 +619,7 @@ class SentenceTransformer(nn.Sequential):
 
     def fit(self,
             train_objectives: Iterable[Tuple[DataLoader, nn.Module]],
-            eval_dataloaders: Iterable[DataLoader] = None,
+            eval_dataloaders: Iterable[DataLoader] = [],
             evaluator: SentenceEvaluator = None,
             epochs: int = 1,
             steps_per_epoch: int = None,
@@ -636,7 +636,7 @@ class SentenceTransformer(nn.Sequential):
             use_amp: bool = False,
             logging_steps: int = 500,
             train_callback: Callable[[float, int, int], None] = None,
-            eval_loss_callback: Callable[[nn.Module, str, DataLoader, int, int], None] = None,
+            eval_loss_callback: Callable[[nn.Module, DataLoader, int, int], None] = None,
             callback: Callable[[float, int, int], None] = None,
             show_progress_bar: bool = True,
             checkpoint_path: str = None,
@@ -673,7 +673,7 @@ class SentenceTransformer(nn.Sequential):
         :param eval_loss_callback: eval_loss_callback function that is invoked after each evaluation.
                 It prints loss during evaluation
                 It must accept the following three parameters in this order:
-                `loss_module`, `device`, `eval_dataloader`, `epoch`, `global_step`
+                `loss_module`, `eval_dataloader`, `epoch`, `global_step`
         :param callback: Callback function that is invoked after each evaluation.
                 It must accept the following three parameters in this order:
                 `score`, `epoch`, `steps`
@@ -714,7 +714,7 @@ class SentenceTransformer(nn.Sequential):
         # Use smart batching
         for dataloader in dataloaders:
             dataloader.collate_fn = self.smart_batching_collate
-        # Use smart batching for eval data loader   
+        # Use smart batching for eval data loaders   
         for dataloader in eval_dataloaders:
             dataloader.collate_fn = self.smart_batching_collate
         # Calculate number of steps
@@ -744,11 +744,12 @@ class SentenceTransformer(nn.Sequential):
             optimizers.append(optimizer)
             schedulers.append(scheduler_obj)
 
-        n_dataloaders, n_loss_models, n_optimizers = len(dataloaders), len(loss_models), len(optimizers)
-        prepared = accelerator.prepare(*dataloaders, *loss_models, *optimizers)
+        n_dataloaders, n_loss_models, n_optimizers, n_eval_dataloaders = len(dataloaders), len(loss_models), len(optimizers), len(eval_dataloaders)
+        prepared = accelerator.prepare(*dataloaders, *loss_models, *optimizers, **eval_dataloaders)
         dataloaders = prepared[0:n_dataloaders]
         loss_models = prepared[n_dataloaders:n_dataloaders + n_loss_models]
-        optimizers = prepared[n_dataloaders + n_loss_models:len(prepared)]
+        optimizers = prepared[n_dataloaders + n_loss_models:n_dataloaders + n_loss_models + n_optimizers]
+        eval_dataloaders = prepared[n_dataloaders + n_loss_models + n_optimizers:len(prepared)]
 
         self.best_score = -9999999
 
@@ -817,8 +818,8 @@ class SentenceTransformer(nn.Sequential):
                         if accelerator.is_main_process:
                             train_callback(avg_loss, epoch, global_step)
 
-                    if evaluation_steps > 0 and global_step % evaluation_steps == 0 and eval_dataloaders is not None and eval_loss_callback is not None and accelerator.is_main_process:
-                        eval_loss_callback(loss_model, accelerator.device, eval_dataloaders[train_idx], epoch, global_step)
+                    if evaluation_steps > 0 and global_step % evaluation_steps == 0 and n_eval_dataloaders > 0 and eval_loss_callback is not None and accelerator.is_main_process:
+                        eval_loss_callback(loss_model, eval_dataloaders[train_idx], epoch, global_step)
                         loss_model.zero_grad()
                         loss_model.train()
                             
