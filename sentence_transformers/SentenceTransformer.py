@@ -818,13 +818,13 @@ class SentenceTransformer(nn.Sequential):
                         if accelerator.is_main_process:
                             train_callback(avg_loss, epoch, global_step)
 
-                    if evaluation_steps > 0 and global_step % evaluation_steps == 0 and n_eval_dataloaders > 0 and eval_loss_callback is not None and accelerator.is_main_process:
-                        print('eval loss calculation for epoch={} and global step={}'.format(epoch, global_step))
-                        print(len(eval_dataloaders[train_idx]))
-                        #eval_loss_callback(loss_model, eval_dataloaders[train_idx], epoch, global_step)
-                        #loss_model.zero_grad()
-                        #loss_model.train()
-                            
+                    if evaluation_steps > 0 and global_step % evaluation_steps == 0 and n_eval_dataloaders > 0:
+                        eval_losses = self._compute_evaluation_loss(loss_model, eval_dataloaders[train_idx], 
+                                                                    epoch, show_progress_bar)
+                        eval_losses = accelerator.gather(eval_losses).detach()
+                        eval_loss = torch.mean(eval_losses).cpu().numpy()
+                        if accelerator.is_main_process:
+                            print('eval loss={} for epoch={} and global step={}'.format(eval_loss, epoch, global_step))
 
                 if evaluation_steps > 0 and global_step % evaluation_steps == 0:
                     self._eval_during_training(evaluator, output_path, save_best_model, epoch, global_step, callback,
@@ -853,6 +853,21 @@ class SentenceTransformer(nn.Sequential):
                 self._save_checkpoint(checkpoint_path, checkpoint_save_total_limit, global_step)
 
 
+    def _compute_evaluation_loss(self, loss_model, eval_dataloader, epoch, show_progress_bar=True):
+        num_eval_batches = len(eval_dataloader)
+        data_iterator = iter(eval_dataloader)
+        loss_model.eval()
+        loss_values = []
+        with torch.no_grad():
+            for _ in trange(num_eval_batches, desc=f'Validation Loss (epoch: {epoch})', smoothing=0.05, disable=not show_progress_bar):
+                data = next(data_iterator)
+                features, labels = data
+                loss_value = loss_model(features, labels)
+                loss_values.append(loss_value)
+        loss_model.zero_grad()
+        loss_model.train()
+        return loss_values
+    
 
     def evaluate(self, evaluator: SentenceEvaluator, output_path: str = None):
         """
