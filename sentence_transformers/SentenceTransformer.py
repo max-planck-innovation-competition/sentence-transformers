@@ -635,7 +635,7 @@ class SentenceTransformer(nn.Sequential):
             max_grad_norm: float = 1,
             use_amp: bool = False,
             logging_steps: int = 500,
-            train_callback: Callable[[np.array, int, int], None] = None,
+            train_callback: Callable[[float, int, int], None] = None,
             eval_loss_callback: Callable[[float, int, int], None] = None,
             callback: Callable[[float, int, int], None] = None,
             show_progress_bar: bool = True,
@@ -669,7 +669,7 @@ class SentenceTransformer(nn.Sequential):
         :param logging_steps: How often to run the train callback
         :param train_callback: Callback function that is invoked after each iteration of training.
                 It must accept the following three parameters in this order:
-                numpy array of `score`, `epoch`, `steps`
+                `score`, `epoch`, `steps`
         :param eval_loss_callback: eval_loss_callback function that is invoked after each evaluation. 
                 It must accept the following three parameters in this order:
                 `score`, `epoch`, `steps`
@@ -813,8 +813,9 @@ class SentenceTransformer(nn.Sequential):
                     accelerator.wait_for_everyone()
                     if logging_steps > 0 and global_step % logging_steps == 0 and train_callback is not None:
                         loss_values = accelerator.gather(loss_value).detach()
+                        avg_loss = torch.mean(loss_values).cpu().numpy()
                         if accelerator.is_main_process:
-                            train_callback(loss_values.cpu().numpy(), epoch, global_step)
+                            train_callback(avg_loss, epoch, global_step)
 
                     if evaluation_steps > 0 and global_step % evaluation_steps == 0 and n_eval_dataloaders > 0:
                         eval_losses = self._compute_evaluation_loss(loss_model, eval_dataloaders[train_idx], 
