@@ -822,7 +822,7 @@ class SentenceTransformer(nn.Sequential):
                                                                     epoch, show_progress_bar)
                         eval_losses = accelerator.gather(eval_losses)
                         logger.info("view of eval losses={}".format(eval_losses))
-                        eval_loss = torch.mean(eval_losses).cpu().numpy()
+                        eval_loss = torch.mean(torch.stack(eval_losses)).cpu().numpy()
                         if accelerator.is_main_process and eval_loss_callback is not None:
                             eval_loss_callback(eval_loss, epoch, global_step)
 
