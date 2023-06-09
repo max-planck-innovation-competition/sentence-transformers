@@ -26,6 +26,7 @@ class TripletEvaluator(SentenceEvaluator):
         batch_size: int = 16,
         show_progress_bar: bool = False,
         write_csv: bool = True,
+        main_process: bool=True,
     ):
         """
         :param anchors: Sentences to check similarity to. (e.g. a query)
@@ -36,11 +37,13 @@ class TripletEvaluator(SentenceEvaluator):
         :param batch_size: Batch size used to compute embeddings
         :param show_progress_bar: If true, prints a progress bar
         :param write_csv: Write results to a CSV file
+        :param main_process: For multi gpu it should be set to 0 for main process
         """
         self.anchors = anchors
         self.positives = positives
         self.negatives = negatives
         self.name = name
+        self.main_process = main_process
 
         assert len(self.anchors) == len(self.positives)
         assert len(self.anchors) == len(self.negatives)
@@ -78,8 +81,8 @@ class TripletEvaluator(SentenceEvaluator):
                 out_txt = " in epoch {} after {} steps:".format(epoch, steps)
         else:
             out_txt = ":"
-
-        logger.info("TripletEvaluator: Evaluating the model on " + self.name + " dataset" + out_txt)
+        if self.main_process:
+            logger.info("TripletEvaluator: Evaluating the model on " + self.name + " dataset" + out_txt)
 
         num_triplets = 0
         num_correct_cos_triplets, num_correct_manhattan_triplets, num_correct_euclidean_triplets = 0, 0, 0
@@ -122,22 +125,23 @@ class TripletEvaluator(SentenceEvaluator):
         accuracy_manhattan = num_correct_manhattan_triplets / num_triplets
         accuracy_euclidean = num_correct_euclidean_triplets / num_triplets
 
-        logger.info("Accuracy Cosine Distance:   \t{:.2f}".format(accuracy_cos * 100))
-        logger.info("Accuracy Manhattan Distance:\t{:.2f}".format(accuracy_manhattan * 100))
-        logger.info("Accuracy Euclidean Distance:\t{:.2f}\n".format(accuracy_euclidean * 100))
+        if self.main_process:
+            logger.info("Accuracy Cosine Distance:   \t{:.2f}".format(accuracy_cos * 100))
+            logger.info("Accuracy Manhattan Distance:\t{:.2f}".format(accuracy_manhattan * 100))
+            logger.info("Accuracy Euclidean Distance:\t{:.2f}\n".format(accuracy_euclidean * 100))
 
-        if output_path is not None and self.write_csv:
-            csv_path = os.path.join(output_path, self.csv_file)
-            if not os.path.isfile(csv_path):
-                with open(csv_path, newline="", mode="w", encoding="utf-8") as f:
-                    writer = csv.writer(f)
-                    writer.writerow(self.csv_headers)
-                    writer.writerow([epoch, steps, accuracy_cos, accuracy_manhattan, accuracy_euclidean])
+            if output_path is not None and self.write_csv:
+                csv_path = os.path.join(output_path, self.csv_file)
+                if not os.path.isfile(csv_path):
+                    with open(csv_path, newline="", mode="w", encoding="utf-8") as f:
+                        writer = csv.writer(f)
+                        writer.writerow(self.csv_headers)
+                        writer.writerow([epoch, steps, accuracy_cos, accuracy_manhattan, accuracy_euclidean])
 
-            else:
-                with open(csv_path, newline="", mode="a", encoding="utf-8") as f:
-                    writer = csv.writer(f)
-                    writer.writerow([epoch, steps, accuracy_cos, accuracy_manhattan, accuracy_euclidean])
+                else:
+                    with open(csv_path, newline="", mode="a", encoding="utf-8") as f:
+                        writer = csv.writer(f)
+                        writer.writerow([epoch, steps, accuracy_cos, accuracy_manhattan, accuracy_euclidean])
 
         if self.main_distance_function == SimilarityFunction.COSINE:
             return accuracy_cos

@@ -8,7 +8,7 @@ import os
 import torch
 import numpy as np
 import queue
-import logging
+from accelerate.logging import get_logger
 from typing import Dict, Optional, Union
 from pathlib import Path
 
@@ -19,7 +19,10 @@ import fnmatch
 from packaging import version
 import heapq
 
-logger = logging.getLogger(__name__)
+import pynvml
+
+
+logger = get_logger(__name__)
 
 def pytorch_cos_sim(a: Tensor, b: Tensor):
     """
@@ -307,6 +310,62 @@ def batch_to_device(batch, target_device: device):
     return batch
 
 
+# from https://github.com/vlkit/vlkit/blob/master/vlkit/ops/distributed.py
+class AllGather(torch.autograd.Function):
+    """
+    all_gather with gradient back-propagation
+    """
+    @staticmethod
+    def forward(ctx, tensor_list, tensor, group, async_op):
+        torch.distributed.all_gather(tensor_list, tensor, group=group, async_op=async_op)
+        return tuple(tensor_list)
+
+    @staticmethod
+    def backward(ctx, *grad_list):
+        grad_list = list(grad_list)
+        rank = torch.distributed.get_rank()
+
+        dist_ops = [
+            torch.distributed.reduce(grad_list[i], i, async_op=True) for i in range(torch.distributed.get_world_size())
+        ]
+
+        for op in dist_ops:
+            op.wait()
+
+        return None, grad_list[rank], None, None
+
+
+all_gather_with_grad = AllGather.apply
+
+
+def mismatched_sizes_all_gather(tensor: Tensor, group=None, async_op=False, mismatched_axis=0):
+    # all_gather doesn't support tensor lists where the first dimension is mismatched. This does.
+    assert torch.distributed.is_initialized(), "torch.distributed not initialized"
+    world_size = torch.distributed.get_world_size()
+    # let's get the sizes for everyone
+    mismatched_sizes = torch.tensor([tensor.shape[mismatched_axis]], dtype=torch.int64, device="cuda")
+    sizes = [torch.zeros_like(mismatched_sizes) for _ in range(world_size)]
+    torch.distributed.all_gather(sizes, mismatched_sizes, group=group, async_op=async_op)
+    sizes = torch.cat(sizes).cpu().tolist()
+    # now pad to the max dim-0 size
+    max_size = max(sizes)
+    padded = torch.zeros((*tensor.shape[:mismatched_axis], max_size, *tensor.shape[mismatched_axis+1:]),
+                         device=tensor.device, dtype=tensor.dtype)
+    # selects the place where we're adding information
+    padded_to_fill = padded.narrow(mismatched_axis, 0, tensor.shape[mismatched_axis])
+    padded_to_fill[...] = tensor
+    # gather the padded tensors
+    tensor_list = [torch.zeros(padded.shape, device=padded.device, dtype=padded.dtype) for _ in range(world_size)]
+    all_gather_with_grad(tensor_list, padded, group, async_op)
+    # trim off the padding
+    for rank in range(world_size):
+        # checks that the rest is 0
+        assert not tensor_list[rank].narrow(mismatched_axis, sizes[rank], padded.shape[mismatched_axis]-sizes[rank]).count_nonzero().is_nonzero(), \
+            "This would remove non-padding information"
+        tensor_list[rank] = tensor_list[rank].narrow(mismatched_axis, 0, sizes[rank])
+    return tensor_list
+
+
 
 def fullname(o):
   """
@@ -341,6 +400,19 @@ def import_from_string(dotted_path):
     except AttributeError:
         msg = 'Module "%s" does not define a "%s" attribute/class' % (module_path, class_name)
         raise ImportError(msg)
+    
+
+def print_gpu_utilization():
+    pynvml.nvmlInit()
+    for id in range(pynvml.nvmlDeviceGetCount()):
+        handle = pynvml.nvmlDeviceGetHandleByIndex(id)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        logger.info("Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(id, 
+                                                                                            pynvml.nvmlDeviceGetName(handle), 
+                                                                                            100*info.free/info.total, 
+                                                                                            info.total, 
+                                                                                            info.free, 
+                                                                                            info.used))
 
 
 def community_detection(embeddings, threshold=0.75, min_community_size=10, batch_size=1024):
@@ -423,12 +495,12 @@ def community_detection(embeddings, threshold=0.75, min_community_size=10, batch
 def snapshot_download(
     repo_id: str,
     revision: Optional[str] = None,
-    cache_dir: Union[str, Path, None] = None,
+    cache_dir = None,
     library_name: Optional[str] = None,
     library_version: Optional[str] = None,
-    user_agent: Union[Dict, str, None] = None,
+    user_agent = None,
     ignore_files: Optional[List[str]] = None,
-    use_auth_token: Union[bool, str, None] = None
+    use_auth_token = None
 ) -> str:
     """
     Method derived from huggingface_hub.
