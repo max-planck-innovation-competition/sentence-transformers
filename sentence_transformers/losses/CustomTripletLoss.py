@@ -4,7 +4,7 @@ from typing import Iterable, Dict
 import torch.nn.functional as F
 from enum import Enum
 from ..SentenceTransformer import SentenceTransformer
-from losses import TripletDistanceMetric
+from . import TripletDistanceMetric
 
 
 class CustomTripletLoss(nn.Module):
