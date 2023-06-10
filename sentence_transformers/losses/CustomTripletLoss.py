@@ -3,7 +3,8 @@ from torch import nn, Tensor
 from typing import Iterable, Dict
 import torch.nn.functional as F
 from enum import Enum
-from sentence_transformer import SentenceTransformer, losses
+from ..SentenceTransformer import SentenceTransformer
+from losses import TripletDistanceMetric
 
 
 class CustomTripletLoss(nn.Module):
@@ -37,7 +38,7 @@ class CustomTripletLoss(nn.Module):
     """
 
     def __init__(self, model: SentenceTransformer,
-                 distance_metric=losses.TripletDistanceMetric.EUCLIDEAN,
+                 distance_metric=TripletDistanceMetric.EUCLIDEAN,
                  triplet_margin: float = 5,
                  compute_train_accuracy: bool = False):
 
@@ -49,7 +50,7 @@ class CustomTripletLoss(nn.Module):
 
     def get_config_dict(self):
         distance_metric_name = self.distance_metric.__name__
-        for name, value in vars(losses.TripletDistanceMetric).items():
+        for name, value in vars(TripletDistanceMetric).items():
             if value == self.distance_metric:
                 distance_metric_name = "TripletDistanceMetric.{}".format(name)
                 break
