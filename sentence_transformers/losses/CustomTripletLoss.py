@@ -66,8 +66,8 @@ class CustomTripletLoss(nn.Module):
         distance_neg = self.distance_metric(rep_anchor, rep_neg)
 
         accuracy = None
-        num_triplets = None
-        num_correct_triplets = None
+        num_triplets = 0
+        num_correct_triplets = 0
         if self.compute_train_accuracy:
             for idx in range(len(distance_pos)):
                 num_triplets += 1
