@@ -22,7 +22,6 @@ class CustomTripletLoss(nn.Module):
     :param model: SentenceTransformerModel
     :param distance_metric: Function to compute distance between two embeddings. The class TripletDistanceMetric contains common distance metrices that can be used.
     :param triplet_margin: The negative should be at least this much further away from the anchor than the positive.
-    :param compute_train_accuracy: Boolean variable. If it is True, training accuracy will be calculated and write to file
 
     Example::
 
@@ -39,14 +38,12 @@ class CustomTripletLoss(nn.Module):
 
     def __init__(self, model: SentenceTransformer,
                  distance_metric=TripletDistanceMetric.EUCLIDEAN,
-                 triplet_margin: float = 5,
-                 compute_train_accuracy: bool = False):
+                 triplet_margin: float = 5):
 
         super(CustomTripletLoss, self).__init__()
         self.model = model
         self.distance_metric = distance_metric
         self.triplet_margin = triplet_margin
-        self.compute_train_accuracy = compute_train_accuracy
 
     def get_config_dict(self):
         distance_metric_name = self.distance_metric.__name__
@@ -55,7 +52,7 @@ class CustomTripletLoss(nn.Module):
                 distance_metric_name = "TripletDistanceMetric.{}".format(name)
                 break
 
-        return {'distance_metric': distance_metric_name, 'triplet_margin': self.triplet_margin, 'compute_train_accuracy': self.compute_train_accuracy}
+        return {'distance_metric': distance_metric_name, 'triplet_margin': self.triplet_margin}
 
     def forward(self, sentence_features: Iterable[Dict[str, Tensor]], labels: Tensor):
         reps = [self.model(sentence_feature)['sentence_embedding']
@@ -65,15 +62,13 @@ class CustomTripletLoss(nn.Module):
         distance_pos = self.distance_metric(rep_anchor, rep_pos)
         distance_neg = self.distance_metric(rep_anchor, rep_neg)
 
-        accuracy = None
         num_triplets = 0
         num_correct_triplets = 0
-        if self.compute_train_accuracy:
-            for idx in range(len(distance_pos)):
-                num_triplets += 1
-                if distance_pos[idx] < distance_neg[idx]:
-                    num_correct_triplets += 1
-            accuracy = num_correct_triplets / num_triplets
+        for idx in range(len(distance_pos)):
+            num_triplets += 1
+            if distance_pos[idx] < distance_neg[idx]:
+                num_correct_triplets += 1
+        accuracy = num_correct_triplets / num_triplets
 
         losses = F.relu(distance_pos - distance_neg + self.triplet_margin)
         return losses.mean(), accuracy

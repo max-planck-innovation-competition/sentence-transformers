@@ -814,11 +814,8 @@ class SentenceTransformer(nn.Sequential):
                     if logging_steps > 0 and global_step % logging_steps == 0 and train_callback is not None:
                         loss_values = accelerator.gather(loss_value).detach()
                         avg_loss = torch.mean(loss_values).cpu().numpy()
-                        if loss_model.compute_train_accuracy:
-                            train_accuracies = accelerator.gather(train_accuracy).detach()
-                            avg_train_accuracy = torch.mean(train_accuracies).cpu().numpy()
-                        else:
-                            avg_train_accuracy = None
+                        train_accuracies = accelerator.gather(train_accuracy).detach()
+                        avg_train_accuracy = torch.mean(train_accuracies).cpu().numpy()
                         if accelerator.is_main_process:
                             train_callback(avg_loss, avg_train_accuracy, epoch, global_step)
 
