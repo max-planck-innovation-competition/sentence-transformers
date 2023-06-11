@@ -63,11 +63,13 @@ class CustomTripletLoss(nn.Module):
         distance_neg = self.distance_metric(rep_anchor, rep_neg)
 
         num_triplets = 0
-        num_correct_triplets = 0
+        num_correct_triplets = torch.zeros([1], dtype=torch.int32)
+        if torch.cuda.is_available():
+            num_correct_triplets.to('gpu')
         for idx in range(len(distance_pos)):
             num_triplets += 1
             if distance_pos[idx] < distance_neg[idx]:
-                num_correct_triplets += 1
+                num_correct_triplets[0] += 1
         accuracy = num_correct_triplets / num_triplets
 
         losses = F.relu(distance_pos - distance_neg + self.triplet_margin)
