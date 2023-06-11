@@ -64,8 +64,8 @@ class CustomTripletLoss(nn.Module):
 
         num_triplets = 0
         num_correct_triplets = torch.zeros([1], dtype=torch.int32)
-        if torch.cuda.is_available():
-            num_correct_triplets.to('gpu')
+        device = torch.cuda.current_device()
+        num_correct_triplets = num_correct_triplets.to(device)
         for idx in range(len(distance_pos)):
             num_triplets += 1
             if distance_pos[idx] < distance_neg[idx]:
