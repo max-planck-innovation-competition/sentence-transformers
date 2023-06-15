@@ -635,7 +635,7 @@ class SentenceTransformer(nn.Sequential):
             max_grad_norm: float = 1,
             use_amp: bool = False,
             logging_steps: int = 500,
-            train_callback: Callable[[float, int, int], None] = None,
+            train_callback: Callable[[float, float, int, int], None] = None,
             eval_loss_callback: Callable[[float, int, int], None] = None,
             callback: Callable[[float, int, int], None] = None,
             show_progress_bar: bool = True,
@@ -669,7 +669,7 @@ class SentenceTransformer(nn.Sequential):
         :param logging_steps: How often to run the train callback
         :param train_callback: Callback function that is invoked after each iteration of training.
                 It must accept the following three parameters in this order:
-                `score`, `epoch`, `steps`
+                `score`, `score`, `epoch`, `steps`
         :param eval_loss_callback: eval_loss_callback function that is invoked after each evaluation. 
                 It must accept the following three parameters in this order:
                 `score`, `epoch`, `steps`
@@ -782,7 +782,7 @@ class SentenceTransformer(nn.Sequential):
 
                     if use_amp:
                         with autocast():
-                            loss_value = loss_model(features, labels)
+                            loss_value, train_accuracy = loss_model(features, labels)
 
                         scale_before_step = scaler.get_scale()
                         accelerator.backward(scaler.scale(loss_value))
@@ -799,7 +799,7 @@ class SentenceTransformer(nn.Sequential):
                                 scheduler.step()
                             global_step += 1
                     else:
-                        loss_value = loss_model(features, labels)
+                        loss_value, train_accuracy = loss_model(features, labels)
                         accelerator.backward(loss_value)
                         torch.nn.utils.clip_grad_norm_(loss_model.parameters(), max_grad_norm)
                         if training_steps % gradient_accumulation == 0:
@@ -814,8 +814,10 @@ class SentenceTransformer(nn.Sequential):
                     if logging_steps > 0 and global_step % logging_steps == 0 and train_callback is not None:
                         loss_values = accelerator.gather(loss_value).detach()
                         avg_loss = torch.mean(loss_values).cpu().numpy()
+                        train_accuracies = accelerator.gather(train_accuracy).detach()
+                        avg_train_accuracy = torch.mean(train_accuracies).cpu().numpy()
                         if accelerator.is_main_process:
-                            train_callback(avg_loss, epoch, global_step)
+                            train_callback(avg_loss, avg_train_accuracy, epoch, global_step)
 
                     if evaluation_steps > 0 and global_step % evaluation_steps == 0 and n_eval_dataloaders > 0:
                         eval_losses = self._compute_evaluation_loss(loss_model, eval_dataloaders[train_idx], 
@@ -861,7 +863,7 @@ class SentenceTransformer(nn.Sequential):
             for _ in trange(num_eval_batches, desc=f'Validation Loss (epoch: {epoch})', smoothing=0.05, disable=not show_progress_bar):
                 data = next(data_iterator)
                 features, labels = data
-                loss_value = loss_model(features, labels)
+                loss_value, _ = loss_model(features, labels)
                 loss_values.append(loss_value.detach())
         loss_model.zero_grad()
         loss_model.train()
