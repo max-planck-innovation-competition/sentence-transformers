@@ -20,7 +20,7 @@ class RerankingEvaluator(SentenceEvaluator):
     :param samples: Must be a list and each element is of the form: {'query': '', 'positive': [], 'negative': []}. Query is the search query,
      positive is a list of positive (relevant) documents, negative is a list of negative (irrelevant) documents.
     """
-    def __init__(self, samples, mrr_at_k: int = 10, name: str = '', write_csv: bool = True, similarity_fct=cos_sim, batch_size: int = 64, show_progress_bar: bool = False, use_batched_encoding: bool = True):
+    def __init__(self, samples, mrr_at_k: int = 10, name: str = '', write_csv: bool = True, similarity_fct=cos_sim, batch_size: int = 64, show_progress_bar: bool = False, use_batched_encoding: bool = True, whole_sample: bool = False):
         self.samples = samples
         self.name = name
         self.mrr_at_k = mrr_at_k
@@ -37,8 +37,11 @@ class RerankingEvaluator(SentenceEvaluator):
 
 
         self.csv_file = "RerankingEvaluator" + ("_" + name if name else '') + "_results.csv"
+        self.whole_sample_csv_file = "RerankingEvaluator" + ("_" + name if name else '') + "_whole_sample_results.csv"
         self.csv_headers = ["epoch", "steps", "MAP", "MRR@{}".format(mrr_at_k)]
+        self.whole_sample_csv_headers = ["epoch", "sample_nr", "MAP", "MRR@{}".format(mrr_at_k)]
         self.write_csv = write_csv
+        self.whole_sample = whole_sample
 
     def __call__(self, model, output_path: str = None, epoch: int = -1, steps: int = -1) -> float:
         if epoch != -1:
@@ -55,6 +58,8 @@ class RerankingEvaluator(SentenceEvaluator):
         scores = self.compute_metrices(model)
         mean_ap = scores['map']
         mean_mrr = scores['mrr']
+        sample_ap = scores['sample_ap']
+        sample_mrr = scores['sample_mrr']
 
         #### Some stats about the dataset
         num_positives = [len(sample['positive']) for sample in self.samples]
@@ -76,6 +81,21 @@ class RerankingEvaluator(SentenceEvaluator):
                     writer.writerow(self.csv_headers)
 
                 writer.writerow([epoch, steps, mean_ap, mean_mrr])
+
+            # write results in csv for whole sample
+            if self.whole_sample:
+                csv_path_whole_sample = os.path.join(output_path, self.whole_sample_csv_file)
+                whole_sample_output_file_exists = os.path.isfile(csv_path_whole_sample)
+                with open(csv_path_whole_sample, newline='', mode="a" if whole_sample_output_file_exists else 'w', encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    if not whole_sample_output_file_exists:
+                        writer.writerow(self.whole_sample_csv_headers)
+                    ap_iter = np.nditer(sample_ap)
+                    mrr_iter = np.nditer(sample_mrr)
+                    while not ap_iter.finished:
+                        writer.writerow([epoch, ap_iter.index+1, ap_iter[0], mrr_iter[0]])
+                        ap_iter.iternext()
+                        mrr_iter.iternext()
 
         return mean_ap
 
@@ -141,7 +161,7 @@ class RerankingEvaluator(SentenceEvaluator):
         mean_ap = np.mean(all_ap_scores)
         mean_mrr = np.mean(all_mrr_scores)
 
-        return {'map': mean_ap, 'mrr': mean_mrr}
+        return {'map': mean_ap, 'mrr': mean_mrr, 'sample_ap': all_ap_scores, 'sample_mrr': all_mrr_scores}
 
 
     def compute_metrices_individual(self, model):
@@ -189,5 +209,5 @@ class RerankingEvaluator(SentenceEvaluator):
         mean_ap = np.mean(all_ap_scores)
         mean_mrr = np.mean(all_mrr_scores)
 
-        return {'map': mean_ap, 'mrr': mean_mrr}
+        return {'map': mean_ap, 'mrr': mean_mrr, 'sample_ap': all_ap_scores, 'sample_mrr': all_mrr_scores}
 
