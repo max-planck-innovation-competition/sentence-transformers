@@ -90,12 +90,9 @@ class RerankingEvaluator(SentenceEvaluator):
                     writer = csv.writer(f)
                     if not whole_sample_output_file_exists:
                         writer.writerow(self.whole_sample_csv_headers)
-                    ap_iter = np.nditer(sample_ap)
-                    mrr_iter = np.nditer(sample_mrr)
-                    while not ap_iter.finished:
-                        writer.writerow([epoch, ap_iter.index+1, ap_iter[0], mrr_iter[0]])
-                        ap_iter.iternext()
-                        mrr_iter.iternext()
+                    for idx, val in np.ndenumerate(sample_ap):
+                        index = idx[0]
+                        writer.writerow([epoch, index+1, val, sample_mrr[index]])
 
         return mean_ap
 
