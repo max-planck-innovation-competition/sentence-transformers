@@ -784,6 +784,7 @@ class SentenceTransformer(nn.Sequential):
                         with autocast():
                             loss_value, train_accuracy = loss_model(features, labels)
 
+                        loss_value = loss_value / gradient_accumulation
                         scale_before_step = scaler.get_scale()
                         accelerator.backward(scaler.scale(loss_value))
                         training_steps += 1
@@ -800,6 +801,7 @@ class SentenceTransformer(nn.Sequential):
                             global_step += 1
                     else:
                         loss_value, train_accuracy = loss_model(features, labels)
+                        loss_value = loss_value / gradient_accumulation
                         accelerator.backward(loss_value)
                         torch.nn.utils.clip_grad_norm_(loss_model.parameters(), max_grad_norm)
                         if training_steps % gradient_accumulation == 0:
