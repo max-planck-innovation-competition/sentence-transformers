@@ -158,7 +158,7 @@ class RerankingEvaluator(SentenceEvaluator):
 
             # compute RFR
             rfr_score = num_pos + num_neg + 1 # worst score and outside possibility
-            for rank, index in enumerate(1, pred_scores_argsort[0:]):
+            for rank, index in enumerate(pred_scores_argsort, 1):
                 if is_relevant[index]:
                     if rank < rfr_score: # min rank
                         rfr_score = rank
@@ -216,7 +216,7 @@ class RerankingEvaluator(SentenceEvaluator):
 
             # compute RFR
             rfr_score = len(positive) + len(negative) + 1 # worst score and outside possibility
-            for rank, index in enumerate(1, pred_scores_argsort[0:]):
+            for rank, index in enumerate(pred_scores_argsort, 1):
                 if is_relevant[index]:
                     if rank < rfr_score: # min rank
                         rfr_score = rank
