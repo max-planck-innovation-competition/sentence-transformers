@@ -15,7 +15,7 @@ class RerankingEvaluator(SentenceEvaluator):
     This class evaluates a SentenceTransformer model for the task of re-ranking.
 
     Given a query and a list of documents, it computes the score [query, doc_i] for all possible
-    documents and sorts them in decreasing order. Then, MRR@10 and MAP is compute to measure the quality of the ranking.
+    documents and sorts them in decreasing order. Then, RFR (Rank First Relevant), MRR@10 and MAP is compute to measure the quality of the ranking.
 
     :param samples: Must be a list and each element is of the form: {'query': '', 'positive': [], 'negative': []}. Query is the search query,
      positive is a list of positive (relevant) documents, negative is a list of negative (irrelevant) documents.
@@ -38,8 +38,8 @@ class RerankingEvaluator(SentenceEvaluator):
 
         self.csv_file = "RerankingEvaluator" + ("_" + name if name else '') + "_results.csv"
         self.whole_sample_csv_file = "RerankingEvaluator" + ("_" + name if name else '') + "_whole_sample_results.csv"
-        self.csv_headers = ["epoch", "steps", "MAP", "MRR@{}".format(mrr_at_k)]
-        self.whole_sample_csv_headers = ["epoch", "sample_nr", "MAP", "MRR@{}".format(mrr_at_k)]
+        self.csv_headers = ["epoch", "steps", "MAP", "MRR@{}".format(mrr_at_k), "RFR"]
+        self.whole_sample_csv_headers = ["epoch", "sample_nr", "MAP", "MRR@{}".format(mrr_at_k), "RFR"]
         self.write_csv = write_csv
         self.whole_sample = whole_sample
 
@@ -58,8 +58,10 @@ class RerankingEvaluator(SentenceEvaluator):
         scores = self.compute_metrices(model)
         mean_ap = scores['map']
         mean_mrr = scores['mrr']
+        mean_rfr = scores['rfr']
         sample_ap = scores['sample_ap']
         sample_mrr = scores['sample_mrr']
+        sample_rfr = scores['sample_rfr']
 
         #### Some stats about the dataset
         num_positives = [len(sample['positive']) for sample in self.samples]
@@ -70,6 +72,7 @@ class RerankingEvaluator(SentenceEvaluator):
                                                                                                                                              np.mean(num_negatives), np.max(num_negatives)))
         logger.info("MAP: {:.2f}".format(mean_ap * 100))
         logger.info("MRR@{}: {:.2f}".format(self.mrr_at_k, mean_mrr * 100))
+        logger.info("RFR: {:.2f}".format(mean_rfr))
 
         #### Write results to disc
         if output_path is not None and self.write_csv:
@@ -80,7 +83,7 @@ class RerankingEvaluator(SentenceEvaluator):
                 if not output_file_exists:
                     writer.writerow(self.csv_headers)
 
-                writer.writerow([epoch, steps, mean_ap, mean_mrr])
+                writer.writerow([epoch, steps, mean_ap, mean_mrr, mean_rfr])
 
             # write results in csv for whole sample
             if self.whole_sample:
@@ -92,7 +95,7 @@ class RerankingEvaluator(SentenceEvaluator):
                         writer.writerow(self.whole_sample_csv_headers)
                     for idx, val in np.ndenumerate(sample_ap):
                         index = idx[0]
-                        writer.writerow([epoch, index+1, val, sample_mrr[index]])
+                        writer.writerow([epoch, index+1, val, sample_mrr[index], sample_rfr[index]])
 
         return mean_ap
 
@@ -106,6 +109,7 @@ class RerankingEvaluator(SentenceEvaluator):
         """
         all_mrr_scores = []
         all_ap_scores = []
+        all_rfr_scores = []
 
         all_query_embs = model.encode([sample['query'] for sample in self.samples],
                                   convert_to_tensor=True,
@@ -152,13 +156,22 @@ class RerankingEvaluator(SentenceEvaluator):
                     break
             all_mrr_scores.append(mrr_score)
 
+            # compute RFR
+            rfr_score = num_pos + num_neg + 1 # worst score and outside possibility
+            for rank, index in enumerate(pred_scores_argsort, 1):
+                if is_relevant[index]:
+                    if rank < rfr_score: # min rank
+                        rfr_score = rank
+            all_rfr_scores.append(rfr_score)
+
             # Compute AP
             all_ap_scores.append(average_precision_score(is_relevant, pred_scores.cpu().tolist()))
 
         mean_ap = np.mean(all_ap_scores)
         mean_mrr = np.mean(all_mrr_scores)
+        mean_rfr = np.mean(all_rfr_scores)
 
-        return {'map': mean_ap, 'mrr': mean_mrr, 'sample_ap': all_ap_scores, 'sample_mrr': all_mrr_scores}
+        return {'map': mean_ap, 'mrr': mean_mrr, 'rfr': mean_rfr, 'sample_ap': all_ap_scores, 'sample_mrr': all_mrr_scores, 'sample_rfr': all_rfr_scores}
 
 
     def compute_metrices_individual(self, model):
@@ -170,6 +183,7 @@ class RerankingEvaluator(SentenceEvaluator):
         """
         all_mrr_scores = []
         all_ap_scores = []
+        all_rfr_scores = []
 
 
         for instance in tqdm.tqdm(self.samples, disable=not self.show_progress_bar, desc="Samples"):
@@ -200,11 +214,20 @@ class RerankingEvaluator(SentenceEvaluator):
                     break
             all_mrr_scores.append(mrr_score)
 
+            # compute RFR
+            rfr_score = len(positive) + len(negative) + 1 # worst score and outside possibility
+            for rank, index in enumerate(pred_scores_argsort, 1):
+                if is_relevant[index]:
+                    if rank < rfr_score: # min rank
+                        rfr_score = rank
+            all_rfr_scores.append(rfr_score)
+
             # Compute AP
             all_ap_scores.append(average_precision_score(is_relevant, pred_scores.cpu().tolist()))
 
         mean_ap = np.mean(all_ap_scores)
         mean_mrr = np.mean(all_mrr_scores)
+        mean_rfr = np.mean(all_rfr_scores)
 
-        return {'map': mean_ap, 'mrr': mean_mrr, 'sample_ap': all_ap_scores, 'sample_mrr': all_mrr_scores}
+        return {'map': mean_ap, 'mrr': mean_mrr, 'rfr': mean_rfr, 'sample_ap': all_ap_scores, 'sample_mrr': all_mrr_scores, 'sample_rfr': all_rfr_scores}
 
