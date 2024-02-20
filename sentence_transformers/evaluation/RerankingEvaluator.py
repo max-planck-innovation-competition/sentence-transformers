@@ -72,7 +72,7 @@ class RerankingEvaluator(SentenceEvaluator):
                                                                                                                                              np.mean(num_negatives), np.max(num_negatives)))
         logger.info("MAP: {:.2f}".format(mean_ap * 100))
         logger.info("MRR@{}: {:.2f}".format(self.mrr_at_k, mean_mrr * 100))
-        logger.info("RFR: {:.2f}".format(mean_rfr * 100))
+        logger.info("RFR: {:.2f}".format(mean_rfr))
 
         #### Write results to disc
         if output_path is not None and self.write_csv:
@@ -158,7 +158,7 @@ class RerankingEvaluator(SentenceEvaluator):
 
             # compute RFR
             rfr_score = num_pos + num_neg + 1 # worst score and outside possibility
-            for rank, index in enumerate(1, pred_scores_argsort):
+            for rank, index in enumerate(1, pred_scores_argsort[0:]):
                 if is_relevant[index]:
                     if rank < rfr_score: # min rank
                         rfr_score = rank
@@ -216,7 +216,7 @@ class RerankingEvaluator(SentenceEvaluator):
 
             # compute RFR
             rfr_score = len(positive) + len(negative) + 1 # worst score and outside possibility
-            for rank, index in enumerate(1, pred_scores_argsort):
+            for rank, index in enumerate(1, pred_scores_argsort[0:]):
                 if is_relevant[index]:
                     if rank < rfr_score: # min rank
                         rfr_score = rank
