@@ -11,7 +11,7 @@ import requests
 import numpy as np
 from numpy import ndarray
 import transformers
-from huggingface_hub import HfApi, HfFolder, Repository, hf_hub_url, cached_download
+from huggingface_hub import HfApi, HfFolder, Repository, hf_hub_url, hf_hub_download
 import torch
 from torch import nn, Tensor, device
 from torch.optim import Optimizer
