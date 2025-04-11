@@ -14,7 +14,7 @@ from pathlib import Path
 
 import huggingface_hub
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE
-from huggingface_hub import HfApi, hf_hub_url, hf_hub_download, HfFolder
+from huggingface_hub import HfApi, hf_hub_url, cached_download, HfFolder
 import fnmatch
 from packaging import version
 import heapq
@@ -568,7 +568,7 @@ def snapshot_download(
             # And need to pass legacy_cache_layout=True to avoid that a warning will be printed
             cached_download_args['legacy_cache_layout'] = True
 
-        path = hf_hub_download(**cached_download_args)
+        path = cached_download(**cached_download_args)
 
         if os.path.exists(path + ".lock"):
             os.remove(path + ".lock")
