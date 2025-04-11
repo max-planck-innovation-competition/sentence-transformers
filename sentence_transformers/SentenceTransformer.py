@@ -11,7 +11,7 @@ import requests
 import numpy as np
 from numpy import ndarray
 import transformers
-from huggingface_hub import HfApi, HfFolder, Repository, hf_hub_url, cached_download
+from huggingface_hub import HfApi, HfFolder, Repository, hf_hub_url, hf_hub_download
 import torch
 from torch import nn, Tensor, device
 from torch.optim import Optimizer
@@ -626,7 +626,7 @@ class SentenceTransformer(nn.Sequential):
             scheduler: str = 'WarmupLinear',
             warmup_steps: int = 10000,
             gradient_accumulation: int = 1,
-            optimizer_class: Type[Optimizer] = transformers.AdamW,
+            optimizer_class: Type[Optimizer] = torch.optim.AdamW,
             optimizer_params: Dict[str, object] = None,
             weight_decay: float = 0.01,
             evaluation_steps: int = 0,
