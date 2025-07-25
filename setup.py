@@ -21,7 +21,7 @@ setup(
     install_requires=[
         'transformers>=4.6.0,<5.0.0',
         'tqdm',
-        'torch==2.0.0',
+        'torch>=2.0.0',
         'torchvision',
         'numpy',
         'scikit-learn',
