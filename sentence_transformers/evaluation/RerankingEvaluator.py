@@ -3,9 +3,9 @@ import logging
 import numpy as np
 import os
 import csv
-from ..util import cos_sim, dot_score
+from ..util import cos_sim
 import torch
-from sklearn.metrics import average_precision_score
+from sklearn.metrics import average_precision_score, ndcg_score
 import tqdm
 
 logger = logging.getLogger(__name__)
@@ -19,11 +19,17 @@ class RerankingEvaluator(SentenceEvaluator):
 
     :param samples: Must be a list and each element is of the form: {'query': '', 'positive': [], 'negative': []}. Query is the search query,
      positive is a list of positive (relevant) documents, negative is a list of negative (irrelevant) documents.
+
+     :param mrr_at_k: Compute MRR (Mean Reciprocal Rank) at k. Must be int. Default value: 10
+     :param ndcg_at_k: Compute NDCG (Normalized Discounted Cumulative Gain) at k. Must be int. Default value: mrr_at_k
     """
-    def __init__(self, samples, mrr_at_k: int = 10, name: str = '', write_csv: bool = True, similarity_fct=cos_sim, batch_size: int = 64, show_progress_bar: bool = False, use_batched_encoding: bool = True, whole_sample: bool = False):
+    def __init__(self, samples, mrr_at_k: int = 10, name: str = '', write_csv: bool = True, similarity_fct=cos_sim, batch_size: int = 64, show_progress_bar: bool = False, use_batched_encoding: bool = True, whole_sample: bool = False, ndcg_at_k: int = None):
         self.samples = samples
         self.name = name
         self.mrr_at_k = mrr_at_k
+        
+        # If ndcg_at_k is not provided, use mrr_at_k as default
+        self.ndcg_at_k = ndcg_at_k if ndcg_at_k is not None else mrr_at_k
         self.similarity_fct = similarity_fct
         self.batch_size = batch_size
         self.show_progress_bar = show_progress_bar
@@ -38,12 +44,26 @@ class RerankingEvaluator(SentenceEvaluator):
 
         self.csv_file = "RerankingEvaluator" + ("_" + name if name else '') + "_results.csv"
         self.whole_sample_csv_file = "RerankingEvaluator" + ("_" + name if name else '') + "_whole_sample_results.csv"
-        self.csv_headers = ["epoch", "steps", "MAP", "MRR@{}".format(mrr_at_k), "RFR"]
-        self.whole_sample_csv_headers = ["epoch", "sample_nr", "MAP", "MRR@{}".format(mrr_at_k), "RFR"]
+        self.csv_headers = ["epoch", "steps", "MAP", "MRR@{}".format(mrr_at_k), "RFR", "NDCG@{}".format(self.ndcg_at_k)]
+        self.whole_sample_csv_headers = ["epoch", "sample_nr", "MAP", "MRR@{}".format(mrr_at_k), "RFR", "NDCG@{}".format(self.ndcg_at_k)]
         self.write_csv = write_csv
         self.whole_sample = whole_sample
 
     def __call__(self, model, output_path: str = None, epoch: int = -1, steps: int = -1) -> float:
+        """
+        Evaluates the model on the given samples.
+        
+        :param model: 
+            The model to evaluate
+        :param output_path: 
+            The path to write the results to
+        :param epoch: 
+            The epoch to write the results to
+        :param steps: 
+            The steps to write the results to
+        :return: 
+            Always returns the mean average precision as the evaluation score.
+        """
         if epoch != -1:
             if steps == -1:
                 out_txt = " after epoch {}:".format(epoch)
@@ -59,9 +79,11 @@ class RerankingEvaluator(SentenceEvaluator):
         mean_ap = scores['map']
         mean_mrr = scores['mrr']
         mean_rfr = scores['rfr']
+        mean_ndcg = scores['ndcg']
         sample_ap = scores['sample_ap']
         sample_mrr = scores['sample_mrr']
         sample_rfr = scores['sample_rfr']
+        sample_ndcg = scores['sample_ndcg']
 
         #### Some stats about the dataset
         num_positives = [len(sample['positive']) for sample in self.samples]
@@ -73,6 +95,7 @@ class RerankingEvaluator(SentenceEvaluator):
         logger.info("MAP: {:.2f}".format(mean_ap * 100))
         logger.info("MRR@{}: {:.2f}".format(self.mrr_at_k, mean_mrr * 100))
         logger.info("RFR: {:.2f}".format(mean_rfr))
+        logger.info("NDCG@{}: {:.2f}".format(self.ndcg_at_k, mean_ndcg * 100))
 
         #### Write results to disc
         if output_path is not None and self.write_csv:
@@ -83,7 +106,7 @@ class RerankingEvaluator(SentenceEvaluator):
                 if not output_file_exists:
                     writer.writerow(self.csv_headers)
 
-                writer.writerow([epoch, steps, mean_ap, mean_mrr, mean_rfr])
+                writer.writerow([epoch, steps, mean_ap, mean_mrr, mean_rfr, mean_ndcg])
 
             # write results in csv for whole sample
             if self.whole_sample:
@@ -95,7 +118,7 @@ class RerankingEvaluator(SentenceEvaluator):
                         writer.writerow(self.whole_sample_csv_headers)
                     for idx, val in np.ndenumerate(sample_ap):
                         index = idx[0]
-                        writer.writerow([epoch, index+1, val, sample_mrr[index], sample_rfr[index]])
+                        writer.writerow([epoch, index+1, val, sample_mrr[index], sample_rfr[index], sample_ndcg[index]])
 
         return mean_ap
 
@@ -110,6 +133,7 @@ class RerankingEvaluator(SentenceEvaluator):
         all_mrr_scores = []
         all_ap_scores = []
         all_rfr_scores = []
+        all_ndcg_scores = []
 
         all_query_embs = model.encode([sample['query'] for sample in self.samples],
                                   convert_to_tensor=True,
@@ -165,13 +189,19 @@ class RerankingEvaluator(SentenceEvaluator):
             all_rfr_scores.append(rfr_score)
 
             # Compute AP
-            all_ap_scores.append(average_precision_score(is_relevant, pred_scores.cpu().tolist()))
+            pred_scores_list = pred_scores.cpu().tolist()
+            all_ap_scores.append(average_precision_score(is_relevant, pred_scores_list))
+
+            # Compute NDCG@k
+            relevance = [1 if rel else 0 for rel in is_relevant]
+            all_ndcg_scores.append(ndcg_score([relevance], [pred_scores_list], k=self.ndcg_at_k))
 
         mean_ap = np.mean(all_ap_scores)
         mean_mrr = np.mean(all_mrr_scores)
         mean_rfr = np.mean(all_rfr_scores)
+        mean_ndcg = np.mean(all_ndcg_scores)
 
-        return {'map': mean_ap, 'mrr': mean_mrr, 'rfr': mean_rfr, 'sample_ap': all_ap_scores, 'sample_mrr': all_mrr_scores, 'sample_rfr': all_rfr_scores}
+        return {'map': mean_ap, 'mrr': mean_mrr, 'rfr': mean_rfr, 'ndcg': mean_ndcg, 'sample_ap': all_ap_scores, 'sample_mrr': all_mrr_scores, 'sample_rfr': all_rfr_scores, 'sample_ndcg': all_ndcg_scores}
 
 
     def compute_metrices_individual(self, model):
@@ -184,6 +214,7 @@ class RerankingEvaluator(SentenceEvaluator):
         all_mrr_scores = []
         all_ap_scores = []
         all_rfr_scores = []
+        all_ndcg_scores = []
 
 
         for instance in tqdm.tqdm(self.samples, disable=not self.show_progress_bar, desc="Samples"):
@@ -223,11 +254,17 @@ class RerankingEvaluator(SentenceEvaluator):
             all_rfr_scores.append(rfr_score)
 
             # Compute AP
-            all_ap_scores.append(average_precision_score(is_relevant, pred_scores.cpu().tolist()))
+            pred_scores_list = pred_scores.cpu().tolist()
+            all_ap_scores.append(average_precision_score(is_relevant, pred_scores_list))
+
+            # Compute NDCG@k
+            relevance = [1 if rel else 0 for rel in is_relevant]
+            all_ndcg_scores.append(ndcg_score([relevance], [pred_scores_list], k=self.ndcg_at_k))
 
         mean_ap = np.mean(all_ap_scores)
         mean_mrr = np.mean(all_mrr_scores)
         mean_rfr = np.mean(all_rfr_scores)
+        mean_ndcg = np.mean(all_ndcg_scores)
 
-        return {'map': mean_ap, 'mrr': mean_mrr, 'rfr': mean_rfr, 'sample_ap': all_ap_scores, 'sample_mrr': all_mrr_scores, 'sample_rfr': all_rfr_scores}
+        return {'map': mean_ap, 'mrr': mean_mrr, 'rfr': mean_rfr, 'ndcg': mean_ndcg, 'sample_ap': all_ap_scores, 'sample_mrr': all_mrr_scores, 'sample_rfr': all_rfr_scores, 'sample_ndcg': all_ndcg_scores}
 
